@@ -106,10 +106,15 @@ export function activate(context: vscode.ExtensionContext) {
     // The command has been defined in the package.json file
     // Now provide the implementation of the command with registerCommand
     // The commandId parameter must match the command field in package.json
-    const disposable = vscode.commands.registerCommand('image-viewer.showImage', async () => {
+    const disposable = vscode.commands.registerCommand('image-viewer.showImage', async (variable) => {
         // The code you place here will be executed every time your command is executed
         // Display a message box to the user
-        vscode.window.showInformationMessage('Show Image');
+        // vscode.window.showInformationMessage('Show Image');
+        if (variable === undefined) {
+            vscode.window.showWarningMessage('No variable selected');
+            return;
+        }
+
         const session = vscode.debug.activeDebugSession;
         if (!session) {
             vscode.window.showWarningMessage('No active debug session');
@@ -118,10 +123,32 @@ export function activate(context: vscode.ExtensionContext) {
 
         // 从调试会话中获取变量
         try {
-            // 确定当前活跃线程
-            const threads = await session.customRequest('threads');
-            const activeThreadId = threads.threads[0]?.id;// 你可能要更复杂地选当前活跃线程
-            if (!activeThreadId) { throw new Error('No active thread'); }
+            // 获取所有线程
+            const threadsResponse = await session.customRequest('threads', {});
+            const threads = threadsResponse.threads;
+            if (!threads.length) {
+                vscode.window.showErrorMessage('当前没有线程');
+                return;
+            }
+
+            // 遍历所有线程，找一个有栈帧的线程作为当前活跃线程
+            let activeThreadId: number | undefined;
+            for (const thread of threads) {
+                const stackTraceResponse = await session.customRequest('stackTrace', {
+                    threadId: thread.id,
+                    startFrame: 0,
+                    levels: 1,
+                });
+                if (stackTraceResponse.stackFrames.length > 0) {
+                    activeThreadId = thread.id;
+                    break;
+                }
+            }
+
+            if (!activeThreadId) {
+                vscode.window.showErrorMessage('找不到活跃线程');
+                return;
+            }
 
             // 获取当前线程的栈帧
             const stackTrace = await session.customRequest('stackTrace', {
@@ -129,10 +156,11 @@ export function activate(context: vscode.ExtensionContext) {
             });
             const frameId = stackTrace.stackFrames[0].id;
 
+            const vari_name = variable.variable.evaluateName;
             // 读取图像 宽、高、数据
-            const img_data_expression = 'myImageBuffer'; // C++ 中你要查看的变量名
-            const img_w_expression = 'w'; // C++ 中你要查看的变量名
-            const img_h_expression = 'h'; // C++ 中你要查看的变量名
+            const img_data_expression = vari_name + ".data";
+            const img_w_expression = vari_name + '.w';
+            const img_h_expression = vari_name + '.h';
             const data_res = await session.customRequest('evaluate', {
                 expression: img_data_expression,
                 frameId: frameId, // 可从栈帧动态获取
@@ -170,7 +198,6 @@ export function activate(context: vscode.ExtensionContext) {
         } catch (err) {
             vscode.window.showErrorMessage(`Evaluate error: ${err}`);
         }
-
     });
 
     context.subscriptions.push(disposable);
