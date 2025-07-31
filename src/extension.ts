@@ -2,8 +2,21 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import * as path from 'path';
 import { spawn } from 'child_process';
+
+async function evaluateMember(
+    session: vscode.DebugSession,
+    mem_expression: string,
+    frame_id: number,
+    context_type: string = 'watch'
+): Promise<any> {
+    const result = await session.customRequest('evaluate', {
+        expression: mem_expression,
+        frameId: frame_id,
+        context: context_type
+    });
+    return result.result;
+}
 
 function getWebviewContent(base64Data: string): string {
     return `
@@ -49,16 +62,25 @@ function getWebviewContent(base64Data: string): string {
 function createTIFF(
     width: number,
     height: number,
+    bits_per_sample: number,
     data: Uint8Array,
     filePath: string
 ) {
-    const numIFDEntries = 7;
-    const header = Buffer.alloc(8);
+    if (bits_per_sample % 8 !== 0) {
+        throw new Error('bits_per_sample must be multiple of 8');
+    }
+    if (data.length !== width * height * bits_per_sample / 8 * 1) {
+        throw new Error('image data length not match');
+    }
+
+    const header = Buffer.alloc(32);
     header.write('II', 0, 2, 'ascii'); // Little endian
     header.writeUInt16LE(42, 2);       // TIFF magic number
-    header.writeUInt32LE(8, 4);        // Offset to IFD
+    header.writeUInt32LE(32, 4);        // Offset to IFD
+    header.write('image viewer by ZouJun', 8, 24, 'ascii');
 
     // Prepare IFD entries
+    const numIFDEntries = 8;
     const ifd = Buffer.alloc(2 + numIFDEntries * 12 + 4); // 2 bytes for count, 4 bytes for nextIFD offset
     ifd.writeUInt16LE(numIFDEntries, 0); // number of IFD entries
 
@@ -75,10 +97,11 @@ function createTIFF(
 
     writeIFDEntry(256, 4, 1, width);                    // ImageWidth
     writeIFDEntry(257, 4, 1, height);                   // ImageLength
-    writeIFDEntry(258, 3, 1, 8);                        // BitsPerSample = 8
+    writeIFDEntry(258, 3, 1, bits_per_sample);          // BitsPerSample = 8
     writeIFDEntry(259, 3, 1, 1);                        // Compression = none
     writeIFDEntry(262, 3, 1, 1);                        // Photometric = BlackIsZero
     writeIFDEntry(273, 4, 1, imageDataOffset);          // StripOffsets = where image data starts
+    writeIFDEntry(277, 4, 1, 1);                        // SamplesPerPixel = num of channels
     writeIFDEntry(279, 4, 1, data.length);              // StripByteCounts = length of image data
 
     ifd.writeUInt32LE(0, offset); // next IFD offset = 0
@@ -88,12 +111,48 @@ function createTIFF(
     console.log(`✅ TIFF saved to: ${filePath}`);
 }
 
-function launchFijiWithTIFF(tiffPath: string, fijiPath: string) {
+function launchFijiWithTIFF(fijiPath: string, tiffPath: string) {
     spawn(fijiPath, [tiffPath], {
         detached: true,
         stdio: 'ignore'
     }).unref();
 }
+
+function checkConfig(view_config: vscode.WorkspaceConfiguration): boolean {
+    let ret: boolean = true;
+    if (view_config.get<string>("imageDataPtrName", "") === "") {
+        vscode.window.showWarningMessage('imageDataPtrName is empty');
+        ret = false;
+    }
+    if (view_config.get<string>("TempImgPath", "") === "") {
+        vscode.window.showWarningMessage('TempImgPath is empty');
+        ret = false;
+    }
+    if (view_config.get<string>("ShowImgCmd", "") === "") {
+        vscode.window.showWarningMessage('ShowImgCmd is empty');
+        ret = false;
+    }
+    return ret;
+}
+
+function formatString(template: string, values: Record<string, string>): string {
+    return template.replace(/{(\w+)}/g, (_, key) =>
+        key in values ? values[key] : `{${key}}`
+    );
+}
+
+function formatExpression(vari_name: string, link_str: string, mem_name: string): string {
+    const parts = mem_name.split("&");
+    let res: string;
+    if (parts.length === 2 && parts[0] === "") {
+        res = `&(${vari_name}${link_str}${parts[1]})`;
+    }
+    else {
+        res = `${vari_name}${link_str}${mem_name}`;
+    }
+    return res;
+}
+
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -115,6 +174,12 @@ export function activate(context: vscode.ExtensionContext) {
             return;
         }
 
+        const view_config = vscode.workspace.getConfiguration("image-viewer");
+        if (!checkConfig(view_config)) {
+            return;
+        }
+
+        // 调试适配器协议 https://microsoft.github.io/debug-adapter-protocol/
         const session = vscode.debug.activeDebugSession;
         if (!session) {
             vscode.window.showWarningMessage('No active debug session');
@@ -154,47 +219,65 @@ export function activate(context: vscode.ExtensionContext) {
             const stackTrace = await session.customRequest('stackTrace', {
                 threadId: activeThreadId
             });
-            const frameId = stackTrace.stackFrames[0].id;
+            const frame_id = stackTrace.stackFrames[0].id;
 
-            const vari_name = variable.variable.evaluateName;
             // 读取图像 宽、高、数据
-            const img_data_expression = vari_name + ".data";
-            const img_w_expression = vari_name + '.w';
-            const img_h_expression = vari_name + '.h';
-            const data_res = await session.customRequest('evaluate', {
-                expression: img_data_expression,
-                frameId: frameId, // 可从栈帧动态获取
-                context: 'watch'
-            });
+            const vari_name = variable.variable.evaluateName;
+            const link_str = ".";
 
-            const width_res = await session.customRequest('evaluate', {
-                expression: img_w_expression,
-                frameId: frameId, // 可从栈帧动态获取
-                context: 'watch'
-            });
+            const img_data_name = view_config.get<string>("imageDataPtrName", "");
+            const img_width_name = view_config.get<string>("imageWidthName", "");
+            const img_height_name = view_config.get<string>("imageHeightName", "");
+            const img_bits_per_pixel_name = view_config.get<string>("BitsPerPixelName", "");
 
-            const height_res = await session.customRequest('evaluate', {
-                expression: img_h_expression,
-                frameId: frameId, // 可从栈帧动态获取
-                context: 'watch'
-            });
+            const data_memory_ref = await evaluateMember(session, formatExpression(vari_name, link_str, img_data_name), frame_id);
 
-            const data_memory_ref = data_res.memoryReference;
-            const img_width = width_res.result;
-            const img_height = height_res.result;
+            let img_width = 0;
+            if (img_width_name === "") {
+                img_width = view_config.get<number>("defaultWidth", 0);
+            }
+            else {
+                img_width = await evaluateMember(session, formatExpression(vari_name, link_str, img_width_name), frame_id);
+            }
+
+            let img_height = 0;
+            if (img_height_name === "") {
+                img_height = view_config.get<number>("defaultHeight", 0);
+            }
+            else {
+                img_height = await evaluateMember(session, formatExpression(vari_name, link_str, img_height_name), frame_id);
+            }
+
+            let bits_per_pixel = 0;
+            if (img_bits_per_pixel_name === "") {
+                bits_per_pixel = view_config.get<number>("defaultBitsPerPixel", 0);
+            }
+            else {
+                bits_per_pixel = await evaluateMember(session, formatExpression(vari_name, link_str, img_bits_per_pixel_name), frame_id);
+            }
+            if (bits_per_pixel % 8 !== 0 || bits_per_pixel <= 0 || bits_per_pixel > 32) {
+                vscode.window.showWarningMessage('bits_per_pixel must be multiple of 8, 16, 24, 32');
+                return;
+            }
 
             const data_memory = await session.customRequest('readMemory', {
                 memoryReference: data_memory_ref, // 变量地址
                 offset: 0,
-                count: img_width * img_height // 你想读取多少字节
+                count: img_width * img_height * bits_per_pixel / 8 // 你想读取多少字节
             });
 
             const base64_img_data = data_memory.data; // 你得到的是 base64 编码的数据
-            const filename = path.join("F:\\temp", "debug_image.tiff");
             const img_data_u8_array = Uint8Array.from(Buffer.from(base64_img_data, 'base64')); // Uint8Array 类型
-            createTIFF(img_width, img_height, img_data_u8_array, filename);
-            launchFijiWithTIFF(filename, "D:\\Tools\\Fiji.app\\fiji-windows-x64.exe");
 
+            // 保存为临时tiff图像，并调用命令打开
+            const temp_img_path = view_config.get<string>("TempImgPath", "");
+            const show_img_cmd = view_config.get<string>("ShowImgCmd", "");
+            let show_img_args = view_config.get<string>("ShowImgArgs", "");
+            if (show_img_args === "") {
+                show_img_args = temp_img_path;
+            }
+            createTIFF(img_width, img_height, bits_per_pixel, img_data_u8_array, temp_img_path);
+            launchFijiWithTIFF(show_img_cmd, show_img_args);
         } catch (err) {
             vscode.window.showErrorMessage(`Evaluate error: ${err}`);
         }
