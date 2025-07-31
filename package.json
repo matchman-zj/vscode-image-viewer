@@ -1,7 +1,7 @@
 {
     "name": "image-viewer",
     "displayName": "image viewer",
-    "description": "",
+    "description": "c++插件，支持查看自定义的图像数据结构",
     "repository": {
         "type": "git",
         "url": "https://github.com/matchman-zj/vscode-image-viewer.git"
