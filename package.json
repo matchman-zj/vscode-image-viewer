@@ -32,6 +32,11 @@
         "configuration": {
             "title": "image viewer Config",
             "properties": {
+                "image-viewer.imageClassName": {
+                    "type": "string",
+                    "default": "{'MyImage': '.', 'MyImage &': '.', 'MyImage &&': '.', 'MyImage *': '->'}",
+                    "description": "自定义图像类型，以及访问成员时使用的访问符号"
+                },
                 "image-viewer.imageDataPtrName": {
                     "type": "string",
                     "default": "",

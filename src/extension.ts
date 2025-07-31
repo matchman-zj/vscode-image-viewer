@@ -222,8 +222,23 @@ export function activate(context: vscode.ExtensionContext) {
             const frame_id = stackTrace.stackFrames[0].id;
 
             // 读取图像 宽、高、数据
+            const class_name_json = view_config.get<string>("imageClassName", "");
+            const class_name_map = JSON.parse(class_name_json.replace(/'/g, '"'));
+
             const vari_name = variable.variable.evaluateName;
-            const link_str = ".";
+            let link_str = ".";
+            const vari_watch = await session.customRequest('evaluate', {
+                expression: vari_name,
+                frameId: frame_id,
+                context: 'watch'
+            });
+            if (vari_watch.type in class_name_map) {
+                link_str = class_name_map[vari_watch.type];
+            }
+            else {
+                vscode.window.showErrorMessage(`未定义图像类型 ${vari_watch.type}`);
+                return;
+            }
 
             const img_data_name = view_config.get<string>("imageDataPtrName", "");
             const img_width_name = view_config.get<string>("imageWidthName", "");
