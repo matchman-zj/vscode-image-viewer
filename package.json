@@ -13,74 +13,24 @@
     "categories": [
         "Other"
     ],
+    "main": "./out/extension.js",
+    "extensionKind": [
+        "ui"
+    ],
     "activationEvents": [
-        "onDebug",
         "onCommand:image-viewer.showImage"
     ],
-    "main": "./out/extension.js",
     "contributes": {
         "commands": [
             {
                 "command": "image-viewer.showImage",
-                "title": "show image"
+                "title": "show tiff image"
             }
         ],
-        "menus": {
-            "debug/variables/context": [
-                {
-                    "command": "image-viewer.showImage",
-                    "group": "navigation"
-                }
-            ]
-        },
+        "menus": {},
         "configuration": {
             "title": "image viewer Config",
             "properties": {
-                "image-viewer.imageClassName": {
-                    "type": "string",
-                    "default": "{'MyImage': '.', 'MyImage &': '.', 'MyImage &&': '.', 'MyImage *': '->'}",
-                    "description": "自定义图像类型，以及访问成员时使用的访问符号"
-                },
-                "image-viewer.imageDataPtrName": {
-                    "type": "string",
-                    "default": "",
-                    "description": "自定义图像中表示图像数据的变量名"
-                },
-                "image-viewer.imageWidthName": {
-                    "type": "string",
-                    "default": "",
-                    "description": "自定义图像中表示宽度的变量名"
-                },
-                "image-viewer.defaultWidth": {
-                    "type": "number",
-                    "default": 0,
-                    "description": "如果未设置 自定义图像中表示宽度的变量名，则使用此处指定的宽度"
-                },
-                "image-viewer.imageHeightName": {
-                    "type": "string",
-                    "default": "",
-                    "description": "自定义图像中表示高度的变量名"
-                },
-                "image-viewer.defaultHeight": {
-                    "type": "number",
-                    "default": 0,
-                    "description": "如果未设置 自定义图像中表示高度的变量名，则使用此处指定的高度"
-                },
-                "image-viewer.BitsPerPixelName": {
-                    "type": "string",
-                    "default": "",
-                    "description": "自定义图像中表示图像位深的变量名，位深值必须为8的整数倍"
-                },
-                "image-viewer.defaultBitsPerPixel": {
-                    "type": "number",
-                    "default": 8,
-                    "description": "如果未设置 自定义图像中表示图像位深的变量名，则使用此处指定的位深，位深值必须为 8, 16, 24, 32"
-                },
-                "image-viewer.TempImgPath": {
-                    "type": "string",
-                    "default": "",
-                    "description": "保存临时图像的路径，保存的格式为tiff"
-                },
                 "image-viewer.ShowImgCmd": {
                     "type": "string",
                     "default": "",
