@@ -1,12 +1,17 @@
 {
     "name": "image-viewer",
     "displayName": "image viewer",
+    "icon": "resource/sawtooth_2_sin_3.png",
     "description": "c++插件，支持查看自定义的图像数据结构",
+    "version": "1.0.1",
+    "publisher": "ZouJun",
+    "author": {
+        "name": "ZouJun"
+    },
     "repository": {
         "type": "git",
         "url": "https://github.com/matchman-zj/vscode-image-viewer.git"
     },
-    "version": "0.0.1",
     "engines": {
         "vscode": "^1.102.0"
     },
