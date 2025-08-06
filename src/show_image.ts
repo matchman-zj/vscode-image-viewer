@@ -1,6 +1,14 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
 import { spawn } from 'child_process';
 
+
+const outputChannel = vscode.window.createOutputChannel('image-viewer');
+
+export function viewerLog(message: string) {
+    const timestamp = new Date().toISOString();
+    outputChannel.appendLine(`[${timestamp}] ${message}`);
+}
 
 function show_tiff_cmd(show_cmd: string, show_arg: string) {
     spawn(show_cmd, [show_arg], {
@@ -9,16 +17,22 @@ function show_tiff_cmd(show_cmd: string, show_arg: string) {
     }).unref();
 }
 
-
 export function register_showImage(context: vscode.ExtensionContext) {
 
-    // Use the console to output diagnostic information (console.log) and errors (console.error)
+    // Use the console to output diagnostic information (viewerLog) and errors (console.error)
     // This line of code will only be executed once when your extension is activated
-    console.log('[extension] image-viewer:show is now active!');
-    const disposable = vscode.commands.registerCommand('image-viewer.showImage', async (args) => {
+    viewerLog('[extension] image-viewer is now registed!');
+    const disposable = vscode.commands.registerCommand('image-viewer.showImage', async (data: Buffer<ArrayBuffer>, path: string) => {
         try {
-            console.log('[extension] image-viewer start show image');
-            
+            viewerLog(`start save image to ${path}`);
+            // const tiff_data = Buffer.from(data, 'base64');
+            fs.writeFileSync(path, data);
+            // const fd = fs.openSync(filePath, 'w');
+            // fs.writeSync(fd, file);
+            // fs.fsyncSync(fd);  // 强制写入到底层文件系统
+            // fs.closeSync(fd);
+
+            viewerLog('start show image');
             const view_config = vscode.workspace.getConfiguration("image-viewer");
             const show_img_cmd = view_config.get<string>("ShowImgCmd", "");
             let show_img_args = view_config.get<string>("ShowImgArgs", "");
@@ -26,6 +40,8 @@ export function register_showImage(context: vscode.ExtensionContext) {
                 show_img_args = view_config.get<string>("TempImgPath", "");
             }
 
+            viewerLog(`show_img_cmd: ${show_img_cmd}`);
+            viewerLog(`show_img_args: ${show_img_args}`);
             show_tiff_cmd(show_img_cmd, show_img_args);
 
         } catch (err) {

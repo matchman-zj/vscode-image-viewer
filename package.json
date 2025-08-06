@@ -3,7 +3,7 @@
     "displayName": "image viewer",
     "icon": "resource/sawtooth_2_sin_3.png",
     "description": "c++插件，支持查看自定义的图像数据结构",
-    "version": "1.0.1",
+    "version": "1.1.6",
     "publisher": "ZouJun",
     "author": {
         "name": "ZouJun"
