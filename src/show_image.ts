@@ -22,15 +22,11 @@ export function register_showImage(context: vscode.ExtensionContext) {
     // Use the console to output diagnostic information (viewerLog) and errors (console.error)
     // This line of code will only be executed once when your extension is activated
     viewerLog('[extension] image-viewer is now registed!');
-    const disposable = vscode.commands.registerCommand('image-viewer.showImage', async (data: Buffer<ArrayBuffer>, path: string) => {
+    const disposable = vscode.commands.registerCommand('image-viewer.showImage', async (data: string, path: string) => {
         try {
             viewerLog(`start save image to ${path}`);
-            // const tiff_data = Buffer.from(data, 'base64');
-            fs.writeFileSync(path, data);
-            // const fd = fs.openSync(filePath, 'w');
-            // fs.writeSync(fd, file);
-            // fs.fsyncSync(fd);  // 强制写入到底层文件系统
-            // fs.closeSync(fd);
+            const tiff_data = Buffer.from(data, 'base64');
+            fs.writeFileSync(path, tiff_data);
 
             viewerLog('start show image');
             const view_config = vscode.workspace.getConfiguration("image-viewer");
